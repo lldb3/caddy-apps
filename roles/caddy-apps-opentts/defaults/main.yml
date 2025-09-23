@@ -1,0 +1,5 @@
+---
+
+app_endpoint: "opentts:3000"
+app_name: "opentts"
+app_subdomain: "opentts"

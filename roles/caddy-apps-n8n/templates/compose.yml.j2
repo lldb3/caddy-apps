@@ -1,0 +1,17 @@
+# based on https://github.com/jgraph/docker-drawio/blob/dev/self-contained/docker-compose.yml
+
+x-common: &common
+  security_opt:
+    - no-new-privileges:true
+  restart: unless-stopped
+
+
+services:
+  n8n:
+    image: docker.n8n.io/n8nio/n8n
+    container_name: n8n
+    <<: *common
+    networks:
+      - main_net
+    volumes:
+      - ./data/n8n:/home/node/.n8n

@@ -1,0 +1,10 @@
+@wazuh host {{ app_subdomain }}.{{ domain_name }}
+handle @wazuh {
+	reverse_proxy {{ app_endpoint }}
+	encode zstd gzip
+
+}
+
+import subdomain-log {{ app_subdomain }}.{{ domain_name }}
+
+

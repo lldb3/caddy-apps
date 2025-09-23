@@ -1,0 +1,29 @@
+x-common: &common
+  security_opt:
+    - no-new-privileges:true
+
+
+services:
+  speedtracker:
+    <<: *common
+    restart: unless-stopped
+    image: lscr.io/linuxserver/speedtest-tracker:latest
+    container_name: speedtracker
+     # https://docs.speedtest-tracker.dev/getting-started/environment-variables
+    environment:      
+        - PUID=1000
+        - PGID=1000
+        - APP_KEY=base64:tZT5haDTZkSLL9sXbcIGiRlvlvT+qlGgPhR2IBOVriU=
+        - DB_CONNECTION=sqlite
+        - SPEEDTEST_SCHEDULE='6 */2 * * *'
+        - APP_DEBUG=false # true to debug
+        - API_RATE_LIMIT=30
+        - APP_URL="{{ app_subdomain }}.{{ domain_name }}"
+        - APP_NAME="SpeedTracker" # name for notifications
+        - CHART_DATETIME_FORMAT='j/m G:i'
+        - DATETIME_FORMAT='j M Y, G:i:s'
+        - DISPLAY_TIMEZONE=$TZ
+    volumes:
+      - ./data/:/config
+    networks:
+      - main_net

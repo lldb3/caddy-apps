@@ -1,0 +1,10 @@
+---
+
+app_endpoint: "nextcloud:80"
+app_name: "nextcloud"
+app_subdomain: "cloud"
+
+postgresql_user: nextcloud
+postgresql_user_password: Pl34s3_7hink_4b0u7_ch4nging_m3_in_pr0d
+
+redis_password: Pl34s3_7hink_4b0u7_ch4nging_m3_in_pr0d

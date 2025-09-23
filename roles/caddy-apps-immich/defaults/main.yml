@@ -1,0 +1,11 @@
+---
+keycloak_is_local: false
+app_endpoint: "immich:2283"
+app_name: "immich"
+app_subdomain: "immich"
+
+postgresql_user: immich
+postgresql_user_password: Pl34s3_7hink_4b0u7_ch4nging_m3_in_pr0d
+
+redis_password: Pl34s3_7hink_4b0u7_ch4nging_m3_in_pr0d
+immich_secret: Pl34s3_7hink_4b0u7_ch4nging_m3_in_pr0d

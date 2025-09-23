@@ -1,0 +1,58 @@
+x-common: &common
+  security_opt:
+    - no-new-privileges:true
+  restart: unless-stopped
+
+networks:
+  opennms_net:
+    name: opennms_net
+
+services:
+  opennms:
+    <<: *common
+    image: opennms/horizon:latest
+    container_name: opennms
+
+    volumes:
+      - ./data/opennms:/opennms-data
+      - ./config/opennms-cfg:/opt/opennms-overlay
+      - ./config/opennms:/opt/opennms/etc
+    environment:
+      - TZ=${TZ}
+      - POSTGRES_HOST=opennms-db
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASS}
+      - OPENNMS_DBNAME=${POSTGRES_DB}
+      - OPENNMS_DBUSER=${POSTGRES_USER}
+      - OPENNMS_DBPASS=${POSTGRES_PASS}
+    ports:
+      - '8980:8980'
+      - '8101:8101'
+    networks:
+      - opennms_net
+      - main_net
+    depends_on:
+      - opennms-db
+    command: ["-s"]
+
+  opennms-db:
+    <<: *common
+    container_name: opennms-db
+    image: bitnami/postgresql:10
+    volumes:
+      - ./data/postgresql:/bitnami/postgresql
+    environment:
+      - TZ=${TZ}
+      - POSTGRESQL_DATABASE=${POSTGRES_DB}
+      - POSTGRESQL_USERNAME=${POSTGRES_USER}
+      - POSTGRESQL_PASSWORD=${POSTGRES_PASS}
+    networks:
+      - opennms_net
+    healthcheck:
+      test: [ 'CMD-SHELL', "sh -c 'pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}'" ]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+

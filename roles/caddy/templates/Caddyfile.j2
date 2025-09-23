@@ -1,0 +1,69 @@
+{
+	order coraza_waf first
+
+	http_port 80
+	https_port 443
+
+# uncomment when testing
+#    acme_ca https://acme-staging-v02.api.letsencrypt.org/directory
+
+
+	# crowdsec {
+	# 	api_url http://localhost:8080
+	# 	api_key {env.CROWDSEC_API_KEY}
+	# 	ticker_interval 15s
+	# 	#disable_streaming
+	# 	#enable_hard_fails
+	# }
+
+	log {
+		output file /var/log/caddy/caddy.log {
+			roll_keep 60
+			roll_keep_for 180d
+		}
+	}
+}
+
+
+(subdomain-log) {
+	log {
+		hostnames {args[0]}
+		output file /var/log/caddy/{args[0]}.log
+	}
+}
+
+
+*.{{ domain_name }}, {{ domain_name }} {
+	# coraza_waf {
+	# 	load_owasp_crs
+	# 	directives `
+	# 	Include @coraza.conf-recommended
+	# 	Include @crs-setup.conf.example
+	# 	Include @owasp_crs/*.conf
+	# 	SecRuleEngine On
+	# 	`
+	# }
+	
+	tls {
+		dns cloudflare {{ dns_challenge_api_token }}
+		resolvers 1.1.1.1
+	}
+
+	header {
+		Server "nginx"
+		X-Frame-Options "SAMEORIGIN"
+		-X-Powered-By
+		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+	}
+
+	@base host {{ domain_name }}
+	handle @base {
+		reverse_proxy http://base-nginx:80
+	}
+
+	import subdomain-log {{ domain_name }}
+
+	import /etc/caddy/caddy-apps/*
+}
+
+import /etc/caddy/caddy-apps-sni/*

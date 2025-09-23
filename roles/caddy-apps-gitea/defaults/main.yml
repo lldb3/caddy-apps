@@ -1,0 +1,8 @@
+---
+
+app_endpoint: "gitea:3000"
+app_name: "gitea"
+app_subdomain: "gitea"
+
+postgresql_user: gitea
+postgresql_user_password: Pl34s3_7hink_4b0u7_ch4nging_m3_in_pr0d

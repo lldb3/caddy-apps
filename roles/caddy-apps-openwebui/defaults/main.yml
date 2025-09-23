@@ -1,0 +1,8 @@
+---
+
+app_endpoint: "openwebui:8080"
+app_name: "openwebui"
+app_subdomain: "chat"
+
+postgresql_user: openwebui
+postgresql_user_password: Pl34s3_7hink_4b0u7_ch4nging_m3_in_pr0d

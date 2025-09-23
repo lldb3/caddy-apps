@@ -1,0 +1,13 @@
+@teable host {{ app_subdomain }}.{{ domain_name }}
+handle @teable {
+	reverse_proxy {{ app_endpoint }}
+	encode zstd gzip
+
+	handle /api/auth/signup* {
+		@blocked not remote_ip {{ admin_whitelisted_ip}}
+		respond @blocked "<h1>Access Denied</h1>" 403
+	}
+}
+
+
+import subdomain-log {{ app_subdomain }}.{{ domain_name }}

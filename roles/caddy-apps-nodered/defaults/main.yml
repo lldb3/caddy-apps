@@ -1,0 +1,6 @@
+---
+
+app_endpoint: "nodered:1880"
+app_name: "nodered"
+app_subdomain: "nodered"
+

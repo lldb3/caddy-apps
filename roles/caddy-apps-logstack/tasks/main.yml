@@ -1,0 +1,166 @@
+---
+- name: 01-SETUP -- Create app_name directory
+  ansible.builtin.file:
+    state: directory
+    path: "{{ project_dir }}/apps/{{ app_name }}"
+    owner: "{{ project_dir_owner }}"
+    group: "{{ project_dir_group }}"
+    mode: 0700
+  become: true
+
+- name: 01-SETUP -- Create app subdirectories
+  ansible.builtin.file:
+    state: directory
+    path: "{{ project_dir }}/apps/{{ app_name }}/{{ item }}"
+    mode: 0770
+  loop:
+    - data
+    - config
+
+- name: 01-SETUP -- create Caddyfile from template
+  ansible.builtin.template:
+    src: Caddyfile.j2
+    dest: "{{ project_dir }}/config/caddy-apps/{{ app_name }}"
+    owner: "{{ project_dir_owner }}"
+    group: "{{ project_dir_group }}"
+    mode: 0600
+  become: true
+
+- name: 01-SETUP -- create compose.yml file
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "{{ project_dir }}/apps/{{ app_name }}/{{ item }}"
+    owner: "{{ project_dir_owner }}"
+    group: "{{ project_dir_group }}"
+    mode: 0600
+  loop:
+    - compose.yml
+    - .env
+  become: true
+
+- name: 01-SETUP -- Create subdirs for apps
+  ansible.builtin.file:
+    state: directory
+    path: "{{ project_dir}}/apps/{{app_name}}/{{item }}"
+    mode: 0770
+    owner: 1001
+    group: "{{ project_dir_group }}"
+  become: true
+  loop:
+    - data/grafana
+    - data/prometheus
+    - data/loki
+    - data/influxdb
+      # config
+    - config/prometheus
+    - config/influxdb
+    - config/promtail
+    - config/loki
+    - config/grafana
+
+- name: 01-SETUP -- copy local config folders to remote
+  ansible.builtin.copy:
+    src: "{{ role_path }}/templates/{{ item }}"
+    dest: "{{ project_dir }}/apps/{{ app_name }}/config"
+    owner: 1001
+    group: "{{ project_dir_group }}"
+    mode: 0660
+  become: true
+  loop:
+    - grafana
+    - prometheus
+    - loki
+    - promtail
+
+
+
+# - name: 01-SETUP -- copy local prometheus config files to remote
+#   copy:
+#     src: "{{ role_path }}/templates/telegraf.conf"
+#     dest: "{{ project_dir }}/apps/{{ app_name }}/config/telegraf.conf"
+#     owner: "{{ project_dir_owner }}"
+#     group: "{{ project_dir_group }}"
+#     mode: 0660
+#   become: true
+
+- name: 01-SETUP -- Add / modify {{ APP }}_INCLUDE_PATH in root .env file
+  ansible.builtin.lineinfile:
+    path: "{{ project_dir }}/.env"
+    regexp: '^{{ app_name | upper }}_COMPOSE_PATH=./apps/{{ app_name }}/compose.yml'
+    line: '{{ app_name | upper }}_COMPOSE_PATH=./apps/{{ app_name }}/compose.yml'
+
+- name: 02-START -- Make sure caddy is restarted
+  community.docker.docker_compose_v2:
+    project_src: "{{ project_dir }}"
+    state: restarted
+    services:
+      - caddy
+
+
+###########################    99-FINISH    ###########################
+- name: 99-FINISH -- Take down and init app services
+  community.docker.docker_compose_v2:
+    project_src: "{{ project_dir }}"
+    pull: missing
+    state: present
+    services:
+      - caddy
+      - socket-proxy
+      - grafana
+      - influxdb
+      - prometheus
+      - loki
+      - promtail
+  loop:
+    - absent
+    - present
+
+- name: 99-FINISH Wait until apps are available
+  uri:
+    url: '{{ item }}'
+    return_content: no
+    validate_certs: yes
+    status_code:
+      - 200
+  until: site_up_output.status == 200
+  retries: 24 # 120 seconds = 2 minutes
+  delay: 5
+  register: site_up_output
+  loop:
+    - 'https://{{ grafana_subdomain}}.{{domain_name }}'
+    - 'https://{{ influx_subdomain}}.{{domain_name }}'
+    - 'https://{{ prometheus_subdomain}}.{{domain_name }}'
+
+- name: Get InfluxDB organization details
+  uri:
+    url: "https://{{ influx_subdomain}}.{{domain_name }}/api/v2/orgs"
+    method: GET
+    headers:
+      Authorization: "Token {{ influxdb_api_token }}"
+    return_content: yes
+  register: api_response
+
+- name: Extract organization ID
+  set_fact:
+    influxdb_org_id: "{{ api_response.json.orgs[0].id }}"
+
+- name: 99-FINISH Create InfluxDB proxmox bucket
+  uri:
+    url: "https://{{ influx_subdomain}}.{{domain_name }}/api/v2/buckets"
+    method: POST
+    headers:
+      Authorization: "Token {{ influxdb_api_token }}"
+      Content-Type: "application/json"
+    body_format: json
+    body:
+      orgID: "{{ influxdb_org_id }}"
+      name: "{{ item }}"
+      retentionRules:
+        - type: "expire"
+          everySeconds: 5184000  # 60 days
+          shardGroupDurationSeconds: 0
+    status_code: 201
+  loop:
+    - proxmox
+    - home_bucket
+

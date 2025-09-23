@@ -1,0 +1,12 @@
+---
+
+app_endpoint: "grist:8080"
+app_name: "grist"
+app_subdomain: "grist"
+
+postgresql_user: "grist"
+postgresql_user_password: Pl34s3_7hink_4b0u7_ch4nging_m3_in_pr0d
+
+
+grist_s3_key: Pl34s3_7hink_4b0u7_ch4nging_m3_in_pr0d
+redis_password: Pl34s3_7hink_4b0u7_ch4nging_m3_in_pr0d

@@ -1,0 +1,10 @@
+@kokoro host {{ app_subdomain }}.{{ domain_name }}
+handle @kokoro {
+	reverse_proxy {{ app_endpoint }}
+	encode zstd gzip
+
+}
+
+import subdomain-log {{ app_subdomain }}.{{ domain_name }}
+
+

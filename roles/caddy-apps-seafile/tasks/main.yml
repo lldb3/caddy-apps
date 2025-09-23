@@ -1,0 +1,283 @@
+---
+- name: 00-PRE-INIT -- Ensure group "seafile" exists
+  ansible.builtin.group:
+    name: seafile
+    gid: 8000
+    state: present
+  become: true
+
+- name: 00-PRE-INIT -- Add the user 'seafile'
+  ansible.builtin.user:
+    name: seafile
+    comment: Seafile docker user
+    uid: 8000
+    group: seafile
+    create_home: false
+    shell: /usr/bin/false
+  become: true
+
+- name: 00-PRE-INIT -- Add current user to 'seafile' group
+  ansible.builtin.user:
+    name: "{{ ansible_user }}"
+    groups: seafile
+    append: true
+  become: true
+
+- name: 00-PRE-INIT -- Set the secrets
+  ansible.builtin.set_fact:
+    "{{ item }}": "{{ lookup('ansible.builtin.password', '/dev/null', chars=['ascii', 'digits'], length=56) }}"
+  loop:
+    - onlyoffice_jwt
+    - seafile_jwt
+    - redis_password
+
+- name: 00-PRE-INIT -- Print generated secrets
+  ansible.builtin.debug:
+    msg: "{{ item }}: {{ hostvars[inventory_hostname][item] }}"
+  with_items:
+    - onlyoffice_jwt
+    - seafile_jwt
+    - redis_password
+
+- name: 01-SETUP -- Create app_name directory
+  ansible.builtin.file:
+    state: directory
+    path: "{{ project_dir}}/apps/{{app_name }}"
+    mode: 0700
+    owner: "{{ project_dir_owner }}"
+    group: "{{ project_dir_group }}"
+  become: true
+
+- name: 01-SETUP -- Create Caddyfile
+  ansible.builtin.template:
+    src: Caddyfile.j2
+    dest: "{{ project_dir}}/config/caddy-apps/{{app_name }}"
+    mode: 0600
+
+- name: 01-SETUP -- Create compose.yml and .env
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "{{ project_dir}}/apps/{{app_name }}/{{ item }}"
+    mode: 0600
+  loop:
+    - compose.yml
+    - .env
+
+- name: 01-SETUP -- Create subdirs
+  ansible.builtin.file:
+    state: directory
+    path: "{{ project_dir}}/apps/{{app_name }}/{{ item }}"
+    mode: '0775'
+    owner: "{{ project_dir_owner }}"
+    group: "{{ project_dir_group }}"
+  loop:
+    - data
+    - data/elasticsearch
+    - config
+    - config/seafile
+  become: true
+
+- name: 01-SETUP -- Create subdirs for seafile
+  ansible.builtin.file:
+    state: directory
+    path: "{{ project_dir}}/apps/{{app_name }}/{{ item }}"
+    mode: '0775'
+    owner: seafile
+    group: "{{ project_dir_group }}"
+  loop:
+    - config/seafile
+  become: true
+
+- name: 01-SETUP -- Create subdirs for bitnami apps
+  ansible.builtin.file:
+    state: directory
+    path: "{{ project_dir}}/apps/{{ app_name }}/{{item }}"
+    mode: '0770'
+    owner: 1001
+    group: "{{ project_dir_group }}"
+  become: true
+  loop:
+    - data/mariadb
+
+- name: 01-SETUP -- Add / modify compose.yml inclusion in root project file
+  ansible.builtin.lineinfile:
+    path: "{{ project_dir }}/.env"
+    regexp: "^{{ app_name | upper }}_COMPOSE_PATH=./apps/{{ app_name }}/compose.yml"
+    line: "{{ app_name | upper }}_COMPOSE_PATH=./apps/{{ app_name }}/compose.yml"
+
+- name: 01-SETUP -- Add seafile db init script
+  ansible.builtin.template:
+    src: "seafile-init.sql"
+    dest: "{{ project_dir}}/apps/{{app_name }}/config/seafile-init.sql"
+    mode: '0644'
+    owner: "{{ project_dir_owner }}"
+    group: "{{ project_dir_group }}"
+  become: true
+
+- name: 01-SETUP -- Watchtower custom repo configuration
+  ansible.builtin.import_tasks: watchtower-repo-setup.yml
+
+- name: 02-START -- (Re)start caddy
+  community.docker.docker_compose_v2:
+    project_src: "{{ project_dir }}"
+    pull: missing
+    state: "{{ item }}"
+    services:
+      - caddy
+      - watchtower # added for login info in config.json
+  loop:
+    - absent
+    - present
+
+- name: 02-START -- Start minio if local
+  community.docker.docker_compose_v2:
+    project_src: "{{ project_dir }}"
+    state: present
+    services:
+      - minio
+  when: minio_is_local == 'true'
+
+- name: 02-START -- Start keycloak if local
+  community.docker.docker_compose_v2:
+    project_src: "{{ project_dir }}"
+    state: present
+    services:
+      - keycloak
+  when: keycloak_is_local == 'true'
+
+- name: 02-START -- Take down and init app services
+  community.docker.docker_compose_v2:
+    project_src: "{{ project_dir }}"
+    pull: missing
+    state: "{{ item }}"
+    services:
+      - caddy
+      - seafile
+      - seafile-db
+      - seafile-memcached
+      # - seafile-redis
+      - seafile-elasticsearch
+  loop:
+    - absent
+    - present
+
+- name: 02-START -- Wait until HTTPS is valid on "https://{{ app_subdomain }}.{{ domain_name }}
+  uri:
+    url: "https://{{ app_subdomain }}.{{ domain_name }}/"
+    return_content: false
+    validate_certs: true
+    status_code:
+      - 200
+  until: site_up_output.status == 200
+  retries: 24 # 240 seconds = 4 minutes
+  delay: 10
+  register: site_up_output
+
+- name: 03-PATCH -- Modify permissions on seafile config directory
+  ansible.builtin.file:
+    state: directory
+    path: "{{ project_dir}}/apps/{{app_name }}/config/seafile/"
+    mode: '0775'
+    owner: "seafile"
+    group: "{{ project_dir_group }}"
+  become: true
+
+- name: 03-PATCH --  Modify permissions on seafile config files
+  ansible.builtin.file:
+    state: touch
+    path: "{{ project_dir}}/apps/{{app_name }}/config/seafile/{{ item }}"
+    mode: '0666'
+    owner: seafile
+    group: "{{ project_dir_group }}"
+  loop:
+    - ccnet.conf
+    - seafile.conf
+    - seafdav.conf
+    - seafevents.conf
+    - seahub_settings.py
+  become: true
+
+- name: 04-ADDONS-ONLYOFFICE
+  import_tasks: onlyoffice.yml
+  when: onlyoffice_enabled == 'true'
+
+- name: 04-ADDONS-S3
+  ansible.builtin.import_tasks: s3.yml
+
+
+- name: 04-ADDONS-SSO
+  ansible.builtin.import_tasks: sso.yml
+
+# todo: recreate the seafile docker without root mysql password and replace it in the config
+
+# NOTE: Yaml requires escaping backslashes in double quotes but not in single quotes
+- name: 99-FINISH -- Comment out the DB_ROOT_PASSWD line from seafile compose.yml
+  ansible.builtin.lineinfile:
+    path: "{{ project_dir}}/apps/{{app_name }}/compose.yml"
+    regexp: '^(.*)\- DB_ROOT_PASSWD=\$MARIADB_ROOT_PASSWORD(.*)$'
+    line: '\1#- DB_ROOT_PASSWD=$MARIADB_ROOT_PASSWORD\2'
+    backrefs: true
+
+- name: 99-FINISH -- recreate seafile configuration files with custom configuration
+  ansible.builtin.template:
+    src: "seafile/{{ item }}"
+    dest: "{{ project_dir}}/apps/{{app_name }}/config/seafile/{{ item }}"
+    mode: '0660'
+    owner: seafile
+    group: "{{ project_dir_group }}"
+  loop:
+    - ccnet.conf
+    - gunicorn.conf.py
+    - seafdav.conf
+    - seafevents.conf
+    - seafile.conf
+    - seahub_settings.py
+  become: true
+
+- name: 99-FINISH -- Recreate app services
+  community.docker.docker_compose_v2:
+    project_src: "{{ project_dir }}"
+    state: "{{ item }}"
+    services:
+      - caddy
+      - seafile
+      - seafile-db
+      - seafile-memcached
+  loop:
+    - absent
+    - present
+
+
+- name: 99-FINISH -- Install boto3, py-redis, pyjwt in seafile
+  ansible.builtin.shell: |
+    docker compose -f {{ project_dir }}/compose.yml exec -u seafile seafile {{ item }}
+  loop:
+    - pip install py-redis pyjwt boto3
+    # - /opt/seafile/seafile-server-latest/seahub.sh restart
+
+- name: 99-FINISH -- Restart onlyoffice services and seafile
+  community.docker.docker_compose_v2:
+    project_src: "{{ project_dir }}"
+    state: "{{ item }}"
+    services:
+      - seafile
+      - onlyoffice-documentserver
+      - onlyoffice-rabbitmq
+      - onlyoffice-postgresql
+  loop:
+    - stopped
+    - present
+  when: onlyoffice_enabled == 'true'
+
+
+- name: 99-FINISH -- Wait until HTTPS is valid on "https://{{ app_subdomain }}.{{ domain_name }}
+  ansible.builtin.uri:
+    url: "https://{{ app_subdomain }}.{{ domain_name }}/"
+    return_content: false
+    validate_certs: true
+    status_code:
+      - 200
+  until: site_up_output.status == 200
+  retries: 24 # 240 seconds = 4 minutes
+  delay: 10
+  register: site_up_output

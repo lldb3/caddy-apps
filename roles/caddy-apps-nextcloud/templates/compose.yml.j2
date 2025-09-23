@@ -1,0 +1,112 @@
+x-common: &common
+  security_opt:
+    - no-new-privileges:true
+  restart: unless-stopped
+
+networks:
+  nextcloud_net:
+    name: nextcloud_net
+
+services:
+  # most of this is taken from here: https://github.com/nextcloud/docker / https://hub.docker.com/_/nextcloud
+  # changes and additions are documented in the comments below
+  # see also: https://github.com/nextcloud/docker/issues/1414
+  nextcloud:
+    <<: *common
+    image: nextcloud:stable
+    container_name: nextcloud
+    volumes:
+      - ./data/nextcloud:/var/www/html
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_HOST=nextcloud-db
+      # See: https://hub.docker.com/_/nextcloud/
+      - APACHE_DISABLE_REWRITE_IP=1
+      # See: https://github.com/nextcloud/documentation/issues/7005
+      # and: https://old.reddit.com/r/NextCloud/comments/s3skdn/nextcloud_behind_caddy_as_a_reverse_proxy_using/hsnj5wh/
+      - TRUSTED_PROXIES=192.168.201.254
+      - NEXTCLOUD_TRUSTED_DOMAINS=${NEXTCLOUD_TRUSTED_DOMAINS}
+      - SMTP_HOST=${SMTP_HOST}
+      - SMTP_SECURE=ssl
+      - SMTP_PORT=465
+      - SMTP_NAME=${SMTP_NAME}
+      - SMTP_PASSWORD=${SMTP_PASSWORD}
+      - MAIL_DOMAIN=${MAIL_DOMAIN}
+      - MAIL_FROM_ADDRESS=${MAIL_FROM_ADDRESS}
+      - OBJECTSTORE_S3_BUCKET=nextcloud-storage
+      - OBJECTSTORE_S3_REGION=local
+      - OBJECTSTORE_S3_HOST={{ s3_backend_host }}
+      - OBJECTSTORE_S3_PORT={{ s3_backend_port }}
+      - OBJECTSTORE_S3_SSL=false
+      - OBJECTSTORE_S3_KEY=nextcloud-user
+      - OBJECTSTORE_S3_SECRET=Pl34s3_7hink_4b0u7_ch4nging_m3_in_pr0d
+      - OBJECTSTORE_S3_USEPATH_STYLE=true
+      - OBJECTSTORE_S3_LEGACYAUTH=true
+      - OBJECTSTORE_S3_AUTOCREATE=true
+      - PHP_MEMORY_LIMIT=2G
+      - PHP_UPLOAD_LIMIT=40G
+      - REDIS_HOST=nextcloud-redis
+      - REDIS_HOST_PORRT=6379
+      - REDIS_HOST_PASSWORD=${REDIS_PASSWORD}
+
+    networks:
+      - nextcloud_net
+      - main_net
+    depends_on:
+      - nextcloud-db
+      - nextcloud-redis
+
+
+
+  nextcloud-db:
+    <<: *common
+    container_name: nextcloud-db
+    image: bitnami/postgresql:17
+    volumes:
+      - ./data/postgresql:/bitnami/postgresql
+    environment:
+      - TZ=${TZ}
+      - POSTGRESQL_DATABASE=${POSTGRES_DB}
+      - POSTGRESQL_USERNAME=${POSTGRES_USER}
+      - POSTGRESQL_PASSWORD=${POSTGRES_PASSWORD}
+    networks:
+      - nextcloud_net
+    healthcheck:
+      test: [ 'CMD-SHELL', "sh -c 'pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}'" ]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+    
+  nextcloud-redis:
+    image: bitnami/redis
+    container_name: nextcloud-redis
+    <<: *common
+    networks:
+      - nextcloud_net
+    environment:
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+    volumes:
+      - ./data/redis:/bitnami/redis/data
+
+
+
+  nextcloud-cron:
+    # Nextcloud cron functionality with Docker deployments is not well documented:
+    # https://github.com/nextcloud/docker/blob/master/.examples/docker-compose/with-nginx-proxy/mariadb/apache/docker-compose.yml#L39
+    # https://github.com/nextcloud/docker/blob/master/.examples/docker-compose/insecure/mariadb/apache/docker-compose.yml#L35
+    # https://github.com/nextcloud/docker/issues/1695
+    # https://docs.nextcloud.com/server/latest/admin_manual/configuration_server/background_jobs_configuration.html
+    image: nextcloud:stable
+    container_name: nextcloud-cron
+    <<: *common
+    restart: always
+    volumes:
+      - ./data/nextcloud:/var/www/html
+    networks:
+      - main_net
+    entrypoint: /cron.sh
+    depends_on:
+      - nextcloud-db

@@ -1,0 +1,65 @@
+---
+
+- name: Deploy all roles to example host
+  hosts: example
+  vars:
+    project_dir: "/opt/caddystack"
+    project_dir_owner: "{{ ansible_user }}"
+    project_dir_group: "{{ ansible_user }}"
+
+
+  pre_tasks:
+    - name: Update apt cache
+      ansible.builtin.apt:
+        update_cache: true
+      when: ansible_os_family == "Debian"
+
+    - name: Ensure required packages are installed
+      ansible.builtin.apt:
+        name:
+          - curl
+          - wget
+          - ca-certificates
+          - gnupg
+          - lsb-release
+        state: present
+      when: ansible_os_family == "Debian"
+
+  roles:
+    - name: Docker
+      role: geerlingguy.docker
+      vars:
+        docker_users:
+          - "{{ ansible_user }}"
+      become: true
+    - role: caddy
+      tags: caddy
+    - role: caddy-apps-keycloak
+      tags: caddy-apps-keycloak
+    - role: caddy-apps-minio
+      tags: caddy-apps-minio
+    - role: caddy-apps-draw
+      tags: caddy-apps-draw
+    - role: caddy-apps-n8n
+      tags: caddy-apps-n8n
+    - role: caddy-apps-nodered
+      tags: caddy-apps-nodered
+    - role: caddy-apps-mosquitto
+      tags: caddy-apps-mosquitto
+    - role: caddy-apps-hass
+      tags: caddy-apps-hass
+    - role: caddy-apps-openwebui
+      tags: caddy-apps-openwebui
+    - role: caddy-apps-opentts
+      tags: caddy-apps-opentts
+    - role: caddy-apps-kokoro
+      tags: caddy-apps-kokoro
+
+  post_tasks:
+    - name: Display deployment summary
+      ansible.builtin.debug:
+        msg: |
+          Deployment completed successfully!
+          Target host: {{ inventory_hostname }}
+          Environment: {{ deploy_env }}
+          Ansible user: {{ ansible_user }}

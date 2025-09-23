@@ -1,0 +1,56 @@
+# based on https://github.com/jgraph/docker-drawio/blob/dev/self-contained/docker-compose.yml
+
+x-common: &common
+  security_opt:
+    - no-new-privileges:true
+  restart: unless-stopped
+
+
+networks:
+  drawio_net:
+
+volumes:
+  fonts_volume:
+
+services:
+  plantuml-server:
+    image: plantuml/plantuml-server
+    #expose:
+    #  - "8080"
+    networks:
+      - drawio_net
+    volumes:
+      - fonts_volume:/usr/share/fonts/drawio
+
+  image-export:
+    image: jgraph/export-server
+    #expose:
+    #  - "8000"
+    networks:
+      - drawio_net
+    volumes:
+      - fonts_volume:/usr/share/fonts/drawio
+    environment:
+      - DRAWIO_BASE_URL=${DRAWIO_BASE_URL}
+
+  drawio:
+    image: jgraph/drawio
+    container_name: drawio
+    <<: *common
+{#    ports:#}
+{#      - "8443:8443"#}
+{#      - "8080:8080"#}
+    depends_on:
+      - plantuml-server
+      - image-export
+    networks:
+      - drawio_net
+      - main_net
+    environment:
+      - DRAWIO_SELF_CONTAINED=1
+      - PLANTUML_URL=http://plantuml-server:8080/
+      - EXPORT_URL=http://image-export:8000/
+      - DRAWIO_BASE_URL=${DRAWIO_BASE_URL}
+      - DRAWIO_SERVER_URL=${DRAWIO_SERVER_URL}
+      - DRAWIO_CLOUD_CONVERT_APIKEY=${DRAWIO_CLOUD_CONVERT_APIKEY}
+      - DRAWIO_USE_HTTP=1

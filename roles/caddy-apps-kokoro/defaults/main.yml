@@ -1,0 +1,5 @@
+---
+
+app_endpoint: "kokoro:8880"
+app_name: "kokoro"
+app_subdomain: "kokoro"

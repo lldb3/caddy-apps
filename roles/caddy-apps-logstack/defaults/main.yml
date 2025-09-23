@@ -1,0 +1,17 @@
+---
+
+app_name: "logstack"
+
+
+influx_endpoint: "influxdb:8086"
+influx_subdomain: "influx"
+
+grafana_endpoint: "grafana:3000"
+grafana_subdomain: "grafana"
+
+
+prometheus_endpoint: "prometheus:9090"
+prometheus_subdomain: "prometheus"
+
+loki_endpoint: "loki:3100"
+loki_subdomain: "loki"

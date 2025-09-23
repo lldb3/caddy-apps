@@ -1,0 +1,6 @@
+---
+
+app_endpoint: "drawio:8080"
+app_name: "draw"
+app_subdomain: "draw"
+

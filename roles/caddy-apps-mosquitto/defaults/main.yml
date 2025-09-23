@@ -1,0 +1,6 @@
+---
+
+app_endpoint: "mosquitto:1883"
+app_name: "mosquitto"
+app_subdomain: "mqtt"
+

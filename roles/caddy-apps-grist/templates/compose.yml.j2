@@ -1,0 +1,67 @@
+x-common: &common
+  security_opt:
+    - no-new-privileges:true
+
+networks:
+  grist_net:
+    name: grist_net
+
+
+services:
+  grist:
+    <<: *common
+    restart: unless-stopped
+    image: gristlabs/grist
+    container_name: grist
+    user: {{ ansible_uid}}:{{ansible_gid }}
+    volumes:
+      - ./data/grist:/persist
+    env_file:
+      - .env
+    environment:
+      - PORT=8080
+      - APP_HOME_URL=https://${GRIST_DOMAIN}
+      - GRIST_ALLOWED_HOSTS=webhook.${GRIST_DOMAIN} # Replace with webhook target domains
+      - GRIST_DOMAIN=${GRIST_DOMAIN}
+      - REDIS_URL=${REDIS_URL}
+      # Database
+      - TYPEORM_HOST=grist-db
+      - TYPEORM_DATABASE=${POSTGRES_DB}
+      - TYPEORM_USERNAME=${POSTGRES_USER}
+      - TYPEORM_LOGGING=false
+      - TYPEORM_PASSWORD=${POSTGRES_PASSWORD}
+      - TYPEORM_PORT=5432
+      - TYPEORM_TYPE=postgres
+    networks:
+      - grist_net
+      - main_net
+    depends_on:
+      - grist-db
+      - grist-redis
+
+  grist-redis:
+    image: bitnami/redis
+    container_name: grist-redis
+    <<: *common
+    networks:
+      - grist_net
+    environment:
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+    volumes:
+      - ./data/redis:/bitnami/redis/data
+
+  
+  grist-db:
+    <<: *common
+    restart: unless-stopped
+    container_name: grist-db
+    image: bitnami/postgresql:16
+    volumes:
+      - ./data/postgresql:/bitnami/postgresql
+    environment:
+      - TZ=${TZ}
+      - POSTGRESQL_DATABASE=${POSTGRES_DB}
+      - POSTGRESQL_USERNAME=${POSTGRES_USER}
+      - POSTGRESQL_PASSWORD=${POSTGRES_PASSWORD}
+    networks:
+      - grist_net

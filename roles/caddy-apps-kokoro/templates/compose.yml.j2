@@ -1,0 +1,19 @@
+x-common: &common
+  security_opt:
+    - no-new-privileges:true
+  restart: unless-stopped
+  networks:
+    - main_net
+
+services:
+  kokoro:
+    <<: *common
+    image: "ghcr.io/remsky/kokoro-fastapi-gpu:latest"
+    container_name: kokoro
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1 # alternatively, use `count: all` for all GPUs
+              capabilities: [gpu]

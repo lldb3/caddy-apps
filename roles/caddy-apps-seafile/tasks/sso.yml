@@ -1,0 +1,83 @@
+---
+- 
+############################################################ SSO ###############
+
+- name: 04-ADDONS-SSO -- Start keycloak if local
+  community.docker.docker_compose_v2:
+    project_src: "{{ project_dir }}"
+    state: present
+    services:
+      - keycloak
+  when: keycloak_is_local == 'true'
+
+- name: 04-ADDONS-SSO -- Wait for keycloak to be available on "{{ keycloak_auth_url }}/test"
+  uri:
+    url: "{{ keycloak_auth_url }}/test"
+    return_content: false
+    validate_certs: true
+    status_code:
+      - 404
+  register: site_up_output
+  until: site_up_output.status == 404
+  retries: 12
+  delay: 5
+  delegate_to: localhost
+
+- name: 04-ADDONS-SSO -- Create keycloak realm {{ keycloak_realm }}
+  community.general.keycloak_realm:
+    auth_client_id: admin-cli
+    auth_keycloak_url: "{{ keycloak_auth_url }}"
+    auth_realm: master
+    auth_username: "{{ keycloak_admin }}"
+    auth_password: "{{ keycloak_admin_pass }}"
+    id: "{{ keycloak_realm }}"
+    realm: "{{ keycloak_realm }}"
+    state: present
+    enabled: true
+  delegate_to: localhost
+
+- name: 04-ADDONS-SSO -- Create or update a Keycloak client
+  community.general.keycloak_client:
+    auth_client_id: admin-cli
+    auth_keycloak_url: "{{ keycloak_auth_url }}"
+    auth_realm: master
+    auth_username: "{{ keycloak_admin }}"
+    auth_password: "{{ keycloak_admin_pass }}"
+    client_id: "{{ app_name }}"
+    realm: "{{ keycloak_realm }}"
+    state: present
+    name: "{{ app_name }}-oidc"
+    description: "{{ app_name }} client"
+    enabled: true
+    client_authenticator_type: client-secret
+    secret: "{{ seafile_secret }}"
+    root_url: "https://{{ app_subdomain }}.{{ domain_name }}"
+    base_url: "/accounts/login"
+    redirect_uris:
+      - "/oauth/callback/"
+    web_origins:
+      - "https://{{ app_subdomain }}.{{ domain_name }}"
+    protocol: openid-connect
+  delegate_to: localhost
+
+- name: 04-ADDONS-SSO -- Create a user for keycloak realm
+  community.general.keycloak_user:
+    auth_client_id: admin-cli
+    auth_keycloak_url: "{{ keycloak_auth_url }}"
+    auth_realm: master
+    auth_username: "{{ keycloak_admin }}"
+    auth_password: "{{ keycloak_admin_pass }}"
+    id: "{{ keycloak_realm }}"
+    realm: "{{ keycloak_realm }}"
+    username: "{{ main_user_name }}"
+    firstName: E
+    lastName: M
+    email: "{{ main_user_email }}"
+    enabled: true
+    emailVerified: true
+    credentials:
+      - type: password
+        value: "{{ main_user_password }}"
+        temporary: false
+    state: present
+  delegate_to: localhost

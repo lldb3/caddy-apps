@@ -1,0 +1,5 @@
+---
+
+app_endpoint: "vaultwarden:80"
+app_name: "vaultwarden"
+app_subdomain: "vault"

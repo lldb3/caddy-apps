@@ -1,0 +1,23 @@
+@grafana host {{ grafana_subdomain }}.{{ domain_name }}
+handle @grafana {
+	reverse_proxy {{ grafana_endpoint }}
+	encode zstd gzip
+}
+import subdomain-log {{ grafana_subdomain }}.{{ domain_name }}
+
+
+@influxdb host {{ influx_subdomain }}.{{ domain_name }}
+handle @influxdb {
+	reverse_proxy {{ influx_endpoint }}
+	encode zstd gzip
+}
+import subdomain-log {{ influx_subdomain }}.{{ domain_name }}
+
+
+@prometheus host {{ prometheus_subdomain }}.{{ domain_name }}
+handle @prometheus {
+	reverse_proxy {{ prometheus_endpoint }}
+	encode zstd gzip
+}
+import subdomain-log {{ prometheus_subdomain }}.{{ domain_name }}
+

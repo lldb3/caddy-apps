@@ -1,0 +1,33 @@
+
+
+{% if minio_is_local == 'true' %}
+{{ app_subdomain }}.{{ domain_name }} {
+	tls {
+        dns cloudflare {{ dns_challenge_api_token }}
+		resolvers 1.1.1.1
+	}
+	reverse_proxy {{ minio_api }}
+	import subdomain-log {{ app_subdomain }}.{{ domain_name }}
+
+}
+console.{{ app_subdomain }}.{{ domain_name }} {
+	tls {
+        dns cloudflare {{ dns_challenge_api_token }}
+		resolvers 1.1.1.1
+	}
+	reverse_proxy {{ minio_console }}
+	import subdomain-log console.{{ app_subdomain }}.{{ domain_name }}
+
+}
+{% else %}
+{{ s3_public_host }} {
+	tls {
+        dns cloudflare {{ dns_challenge_api_token }}
+		resolvers 1.1.1.1
+	}
+	reverse_proxy {{ s3_backend_url }}
+	import subdomain-log {{ s3_public_host }}
+
+}
+{% endif %}
+

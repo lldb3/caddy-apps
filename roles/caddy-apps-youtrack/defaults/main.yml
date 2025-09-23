@@ -1,0 +1,6 @@
+---
+
+app_endpoint: "youtrack:8080"
+app_name: "youtrack"
+app_subdomain: "youtrack"
+

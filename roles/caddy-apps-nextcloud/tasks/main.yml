@@ -1,0 +1,201 @@
+---
+- name: 01-SETUP -- Create app_name directory
+  ansible.builtin.file:
+    state: directory
+    path: "{{ project_dir }}/apps/{{ app_name }}"
+    owner: "{{ project_dir_owner }}"
+    group: "{{ project_dir_group }}"
+    mode: 0700
+  become: true
+
+- name: 01-SETUP -- Create app subdirectories
+  ansible.builtin.file:
+    state: directory
+    path: "{{ project_dir }}/apps/{{ app_name }}/{{ item }}"
+    mode: 0770
+  loop:
+    - data
+
+- name: 01-SETUP -- Create subdirs for bitnami apps
+  ansible.builtin.file:
+    state: directory
+    path: "{{ project_dir}}/apps/{{app_name}}/{{item }}"
+    mode: 0770
+    owner: 1001
+    group: "{{ project_dir_group }}"
+  become: true
+  loop:
+    - data/postgresql
+    - data/redis
+
+
+- name: 01-SETUP -- create Caddyfile from template
+  ansible.builtin.template:
+    src: Caddyfile.j2
+    dest: "{{ project_dir }}/config/caddy-apps/{{ app_name }}"
+    owner: "{{ project_dir_owner }}"
+    group: "{{ project_dir_group }}"
+    mode: 0600
+  become: true
+
+- name: 01-SETUP -- create compose.yml file
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "{{ project_dir }}/apps/{{ app_name }}/{{ item }}"
+    owner: "{{ project_dir_owner }}"
+    group: "{{ project_dir_group }}"
+    mode: 0600
+  loop:
+    - compose.yml
+    - .env
+  become: true
+
+- name: 01-SETUP -- Add / modify {{ APP }}_INCLUDE_PATH in root .env file
+  ansible.builtin.lineinfile:
+    path: "{{ project_dir }}/.env"
+    regexp: '^{{ app_name | upper }}_COMPOSE_PATH=./apps/{{ app_name }}/compose.yml'
+    line: '{{ app_name | upper }}_COMPOSE_PATH=./apps/{{ app_name }}/compose.yml'
+
+- name: 02-START -- Start keycloak if local
+  community.docker.docker_compose_v2:
+    project_src: "{{ project_dir }}"
+    state: present
+    services:
+      - keycloak
+  when: keycloak_is_local == 'true'
+
+
+- name: 02-START -- (Re)start caddy
+  community.docker.docker_compose_v2:
+    project_src: "{{ project_dir }}"
+    pull: missing
+    state: "{{ item }}"
+    services:
+      - caddy
+  loop:
+    - absent
+    - present
+
+- name: 02-START -- Take down and init app services
+  community.docker.docker_compose_v2:
+    project_src: "{{ project_dir }}"
+    pull: missing
+    state: present
+    services:
+      - nextcloud
+      - nextcloud-db
+      - nextcloud-cron
+
+############################################################ S3 ###############
+
+- name: 04-ADDONS-S3 -- Start minio if local
+  community.docker.docker_compose_v2:
+    project_src: "{{ project_dir }}"
+    state: present
+    services:
+      - minio
+  when: minio_is_local == 'true'
+
+- name: 04-ADDONS-S3 Wait for minio to be available on "{{ s3_backend_url }}/test"
+  uri:
+    url: "{{ s3_backend_url }}"
+    return_content: false
+    validate_certs: true
+    status_code:
+      - 403
+  register: site_up_output
+  until: site_up_output.status == 403
+  retries: 12
+  delay: 5
+  delegate_to: localhost
+
+- name: 04-ADDONS-S3 -- Add Minio buckets for nextcloud
+  dubzland.minio.minio_bucket:
+    name: "nextcloud-storage"
+    minio_url: "{{ s3_backend_url }}"
+    minio_access_key: "{{ minio_admin_user }}"
+    minio_secret_key: "{{ minio_admin_pass }}"
+    state: present
+  delegate_to: localhost
+
+- name: 04-ADDONS-S3 -- Add Minio nextcloud bucket policy
+  dubzland.minio.minio_policy:
+    name: NextCloudBucketPolicy
+    data: |
+      {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Action": [
+              "s3:GetBucketLocation",
+              "s3:ListBucket",
+              "s3:ListBucketMultipartUploads"
+            ],
+            "Resource": [
+              "arn:aws:s3:::nextcloud-storage"
+            ]
+          },
+          {
+            "Action": [
+              "s3:AbortMultipartUpload",
+              "s3:DeleteObject",
+              "s3:GetObject",
+              "s3:ListMultipartUploadParts",
+              "s3:PutObject"
+            ],
+            "Effect": "Allow",
+            "Resource": [
+              "arn:aws:s3:::nextcloud-storage/*"            ],
+            "Sid": ""
+          }
+        ]
+      }
+    minio_url: "{{ s3_backend_url }}"
+    minio_access_key: "{{ minio_admin_user }}"
+    minio_secret_key: "{{ minio_admin_pass }}"
+    state: present
+  delegate_to: localhost
+
+- name: 04-ADDONS-S3 -- Add a Minio user for nextcloud
+  dubzland.minio.minio_user:
+    access_key: nextcloud-user
+    secret_key: "Pl34s3_7hink_4b0u7_ch4nging_m3_in_pr0d"
+    minio_url: "{{ s3_backend_url }}"
+    minio_access_key: "{{ minio_admin_user }}"
+    minio_secret_key: "{{ minio_admin_pass }}"
+    state: present
+    policy: NextCloudBucketPolicy
+  delegate_to: localhost
+
+
+- name: 99-FINISH Wait until app is available on on "https://{{ app_subdomain }}.{{ domain_name }}
+  uri:
+    url: 'https://{{ app_subdomain }}.{{ domain_name }}'
+    return_content: no
+    validate_certs: yes
+    status_code:
+      - 200
+  until: site_up_output.status == 200
+  retries: 24 # 120 seconds = 2 minutes
+  delay: 5
+  register: site_up_output
+
+#  indexes what isn't, and configures maintenance window 
+# https://docs.nextcloud.com/server/29/admin_manual/configuration_server/background_jobs_configuration.html
+- name: 99-FINISH - Run occ config on nextcloud container
+  ansible.builtin.command:
+    cmd: "docker compose exec -u www-data nextcloud /var/www/html/occ {{ item }}"
+    chdir: "{{ project_dir }}"
+  loop: 
+    - config:system:set maintenance_window_start --type=integer --value=1  # maintenance schedule (5 am)
+    - config:app:set files max_chunk_size --value 20971520
+    - db:add-missing-indices  
+
+## `*/5 * * * * docker compose -f /opt/caddy-stack/compose.yml exec -u www-data nextcloud  php /var/www/html/cron.php`  
+- name: 99-FINISH - Ensure the nextcloud cronjob is configured 
+  ansible.builtin.cron:
+    name: "check dirs"
+    minute: "*/5" # every five minutes (defaults to * for the other)
+    job: "docker compose -f {{ project_dir }}/compose.yml exec -u www-data nextcloud php /var/www/html/cron.php"
+

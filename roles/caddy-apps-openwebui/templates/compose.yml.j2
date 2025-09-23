@@ -1,0 +1,49 @@
+x-common: &common
+  security_opt:
+    - no-new-privileges:true
+  restart: unless-stopped
+  
+networks:
+  ollama_net:
+
+volumes:
+  # ollama:
+  openwebui:
+
+services:
+  openwebui:
+    <<: *common
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: openwebui
+    environment:
+      - OLLAMA_HOST=ollama:11434
+      - OLLAMA_BASE_URL=http://ollama:11434
+    ports:
+      - "3000:8080"
+      
+    volumes:
+      - openwebui:/app/backend/data
+    networks:
+      - ollama_net
+      - main_net
+
+  ollama:
+    <<: *common
+    image: ollama/ollama:latest
+    container_name: ollama
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+    # ports:
+    #   - "11434:11434"
+    networks:
+      - ollama_net
+    volumes:
+      - /mnt/data/ollama:/root/.ollama    # keep the models in a local dir
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1 # alternatively, use `count: all` for all GPUs
+              capabilities: [gpu]
+

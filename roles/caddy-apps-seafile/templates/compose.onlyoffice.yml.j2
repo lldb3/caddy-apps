@@ -1,0 +1,61 @@
+services:
+  onlyoffice-documentserver:
+    image: onlyoffice/documentserver
+    container_name: onlyoffice-documentserver
+    <<: *common
+    networks:
+      - main_net
+      - seafile_net
+    depends_on:
+      - onlyoffice-postgresql
+      - onlyoffice-rabbitmq
+    environment:
+      - DB_TYPE=postgres
+      - DB_HOST=onlyoffice-postgresql
+      - DB_PORT=5432
+      - DB_NAME=onlyoffice
+      - DB_USER=${ONLYOFFICE_POSTGRESQL_USER}
+      - DB_PWD=${ONLYOFFICE_POSTGRESQL_PASS}
+      - JWT_ENABLED=true
+      - JWT_SECRET=$ONLYOFFICE_JWT
+      - AMQP_URI=amqp://jojo:${RABBITMQ_PASSWORD}@onlyoffice-rabbitmq
+      #- WOPI_ENABLED=true
+
+    # ports:
+    #   - '80:80'
+    #   - '443:443'
+    stdin_open: true
+    stop_grace_period: 30s
+    volumes:
+       - ./data/onlyoffice-logs:/var/log/onlyoffice  # logs
+       - ./data/onlyoffice-data:/var/www/onlyoffice/Data # data for upgrades
+       - ./data/onlyoffice-file-cache:/var/lib/onlyoffice
+
+  onlyoffice-rabbitmq:
+    <<: *common
+    networks:
+      - seafile_net
+    container_name: onlyoffice-rabbitmq
+    image: bitnami/rabbitmq
+    # environment:
+    #   - RABBITMQ_USERNAME=jojo
+    #   - RABBITMQ_PASSWORD=$RABBITMQ_PASSWORD
+    volumes:
+      - ./config/rabbitmq:/opt/bitnami/rabbitmq/etc/rabbitmq
+      - ./data/onlyoffice-rabbitmq:/bitnami/rabbitmq/mnesia
+    # expose:
+    #   - '5672'
+
+  onlyoffice-postgresql:
+    <<: *common
+    networks:
+      - seafile_net
+    container_name: onlyoffice-postgresql
+    image: bitnami/postgresql:16
+    environment:
+      - POSTGRESQL_DATABASE=onlyoffice
+      - POSTGRESQL_USERNAME=${ONLYOFFICE_POSTGRESQL_USER}
+      - POSTGRESQL_PASSWORD=${ONLYOFFICE_POSTGRESQL_PASS}
+    volumes:
+      - ./data/onlyoffice-postgresql:/bitnami/postgresql
+

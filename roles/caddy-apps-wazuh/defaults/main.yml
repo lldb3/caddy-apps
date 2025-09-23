@@ -1,0 +1,17 @@
+---
+
+app_endpoint: "wazuh.dashboard:5601"
+app_name: "wazuh"
+app_subdomain: "sectower"
+
+dash_user: kibanaserver
+dash_pass: 4586b4fb-5858-415c-8d90-25a9437d1d2c
+api_user: wazuh-wui
+api_pass: niSomf03inT00ons0_tn03its_tn003=wtno30nto!os
+indexer_user: admin
+indexer_pass: a7999f5a-558e-40b6-8c40-f9ea0c9dba8c
+
+smtp_enabled: yes
+agent_pass: 198fe2903e016a58ca777f8e67bdfe49cf001a2a-5e64-47e4-a7b0-f8d1f6afaca0
+
+

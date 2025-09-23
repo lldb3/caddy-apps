@@ -1,0 +1,119 @@
+---
+- name: 01-SETUP -- Create app_name directory
+  ansible.builtin.file:
+    state: directory
+    path: "{{ project_dir }}/apps/{{ app_name }}"
+    owner: "{{ project_dir_owner }}"
+    group: "{{ project_dir_group }}"
+    mode: 0700
+  become: true
+
+- name: 01-SETUP -- Create app subdirectories
+  ansible.builtin.file:
+    state: directory
+    path: "{{ project_dir }}/apps/{{ app_name }}/{{ item }}"
+    mode: 0770
+    owner: "{{ project_dir_owner }}"
+    group: "{{ project_dir_group }}"
+  loop:
+    - data
+    - config
+    - config/wazuh_cluster
+    - config/wazuh_dashboard
+    - config/wazuh_indexer
+  become: true
+
+- name: 01-SETUP -- create Caddyfile from template
+  ansible.builtin.template:
+    src: Caddyfile.j2
+    dest: "{{ project_dir }}/config/caddy-apps/{{ app_name }}"
+    owner: "{{ project_dir_owner }}"
+    group: "{{ project_dir_group }}"
+    mode: 0600
+  become: true
+
+- name: 01-SETUP -- create compose.yml file
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "{{ project_dir }}/apps/{{ app_name }}/{{ item }}"
+    owner: "{{ project_dir_owner }}"
+    group: "{{ project_dir_group }}"
+    mode: 0600
+  loop:
+    - compose.yml
+    - generate-indexer-certs.yml
+  become: true
+
+- name: 01-SETUP -- copy config files
+  ansible.builtin.template:
+    src: "{{ item }}"
+    dest: "{{ project_dir }}/apps/{{ app_name }}/{{ item }}"
+    owner: "{{ project_dir_owner }}"
+    group: "{{ project_dir_group }}"
+    mode: 0600
+  become: true
+  loop:
+    - config/certs.yml
+    - config/wazuh_cluster/wazuh_manager.conf
+    - config/wazuh_dashboard/opensearch_dashboards.yml
+    - config/wazuh_dashboard/wazuh.yml
+    - config/wazuh_indexer/internal_users.yml
+    - config/wazuh_indexer/wazuh.indexer.yml
+
+- name: 01-SETUP -- copy config files
+  ansible.builtin.copy:
+    dest: "{{ project_dir }}/apps/{{ app_name }}/config/authd.pass"
+    owner: "root"
+    group: "wazuh" # uid 110 
+    mode: 0640
+    content: "{{ agent_pass }}"
+  become: true
+
+
+- name: 01-SETUP -- Add / modify {{ APP }}_INCLUDE_PATH in root .env file
+  ansible.builtin.lineinfile:
+    path: "{{ project_dir }}/.env"
+    regexp: '^{{ app_name | upper }}_COMPOSE_PATH=./apps/{{ app_name }}/compose.yml'
+    line: '{{ app_name | upper }}_COMPOSE_PATH=./apps/{{ app_name }}/compose.yml'
+
+
+- name: 02-START -- create certs (1st launch)
+  ansible.builtin.shell: 
+    cmd: "docker compose -f {{ project_dir }}/apps/{{ app_name }}/generate-indexer-certs.yml run --rm generator"    
+
+- name: 02-START -- Make sure caddy is restarted
+  community.docker.docker_compose_v2:
+    project_src: "{{ project_dir }}"
+    state: restarted
+    services:
+      - caddy
+
+
+###########################    99-FINISH    ###########################
+- name: 99-FINISH -- Take down and init app services
+  community.docker.docker_compose_v2:
+    project_src: "{{ project_dir }}"
+    pull: missing
+    state: present
+    services:
+      - caddy
+      - wazuh.manager
+      - wazuh.dashboard
+      - wazuh.indexer
+  loop: 
+    - absent
+    - present
+
+- name: 99-FINISH Wait until app is available on on "https://{{ app_subdomain }}.{{ domain_name }}
+  ansible.builtin.uri:
+    url: 'https://{{ app_subdomain }}.{{ domain_name }}'
+    return_content: no
+    validate_certs: no
+    status_code:
+      - 200
+  until: site_up_output.status == 200
+  retries: 24 # 120 seconds = 2 minutes
+  delay: 5
+  register: site_up_output
+  delegate_to: localhost
+

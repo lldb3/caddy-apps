@@ -1,0 +1,211 @@
+---
+- name: 01-SETUP -- Create app_name directory
+  ansible.builtin.file:
+    state: directory
+    path: "{{ project_dir }}/apps/{{ app_name }}"
+    owner: "{{ project_dir_owner }}"
+    group: "{{ project_dir_group }}"
+    mode: 0700
+  become: true
+
+- name: 01-SETUP -- Create app subdirectories
+  ansible.builtin.file:
+    state: directory
+    path: "{{ project_dir }}/apps/{{ app_name }}/{{ item }}"
+    mode: 0770
+  loop:
+    - data
+    - config
+
+- name: 01-SETUP -- Create subdirs for bitnami apps
+  ansible.builtin.file:
+    state: directory
+    path: "{{ project_dir}}/apps/{{app_name}}/{{item }}"
+    mode: 0770
+    owner: 1001
+    group: "{{ project_dir_group }}"
+  become: true
+  loop:
+    # - data/postgresql # specific extensions needed by container
+    - data/redis
+
+- name: 01-SETUP -- create Caddyfile from template
+  ansible.builtin.template:
+    src: Caddyfile.j2
+    dest: "{{ project_dir }}/config/caddy-apps/{{ app_name }}"
+    owner: "{{ project_dir_owner }}"
+    group: "{{ project_dir_group }}"
+    mode: 0600
+  become: true
+
+- name: 01-SETUP -- create compose.yml file
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "{{ project_dir }}/apps/{{ app_name }}/{{ item }}"
+    owner: "{{ project_dir_owner }}"
+    group: "{{ project_dir_group }}"
+    mode: 0600
+  loop:
+    - compose.yml
+    - .env
+  become: true
+
+- name: 01-SETUP -- create immich config
+  ansible.builtin.template:
+    src: "immich.json"
+    dest: "{{ project_dir }}/apps/{{ app_name }}/config/immich.json"
+    owner: "{{ project_dir_owner }}"
+    group: "{{ project_dir_group }}"
+    mode: 0600
+  become: true
+
+- name: 01-SETUP -- Add / modify {{ APP }}_INCLUDE_PATH in root .env file
+  ansible.builtin.lineinfile:
+    path: "{{ project_dir }}/.env"
+    regexp: '^{{ app_name | upper }}_COMPOSE_PATH=./apps/{{ app_name }}/compose.yml'
+    line: '{{ app_name | upper }}_COMPOSE_PATH=./apps/{{ app_name }}/compose.yml'
+
+- name: 02-START -- (Re)start caddy
+  community.docker.docker_compose_v2:
+    project_src: "{{ project_dir }}"
+    pull: missing
+    state: "{{ item }}"
+    services:
+      - caddy
+  loop:
+    - absent
+    - present
+
+- name: 02-START -- Take down and init app services
+  community.docker.docker_compose_v2:
+    project_src: "{{ project_dir }}"
+    pull: missing
+    state: present
+    services:
+      - immich-db
+      - immich-redis
+      - immich-ml
+      - immich
+
+- name: 02-START -- Start keycloak if local
+  community.docker.docker_compose_v2:
+    project_src: "{{ project_dir }}"
+    state: present
+    services:
+      - keycloak
+  when: keycloak_is_local == 'true'
+
+- name: 04-ADDONS-SSO -- Wait for keycloak to be available on "{{ keycloak_auth_url }}/admin"
+  uri:
+    url: '{{ keycloak_auth_url }}/admin'
+    return_content: no
+    validate_certs: yes
+    status_code:
+      - 200
+  until: site_up_output.status == 200
+  retries: 24 # 240 seconds = 4 minutes
+  delay: 10
+  register: site_up_output
+  delegate_to: localhost
+
+
+- name: 04-ADDONS-SSO Create {{ keycloak_realm }} for keycloak
+  community.general.keycloak_realm:
+    auth_client_id: admin-cli
+    auth_keycloak_url: "{{ keycloak_auth_url }}"
+    auth_realm: master
+    auth_username: "{{ keycloak_admin }}"
+    auth_password: "{{ keycloak_admin_pass }}"
+    id: "{{ keycloak_realm }}"
+    realm: "{{ keycloak_realm }}"
+    state: present
+    enabled: true
+  delegate_to: localhost
+
+- name: 04-ADDONS-SSO Create or update a Keycloak client (with all the bells and whistles)
+  community.general.keycloak_client:
+    auth_client_id: admin-cli
+    auth_keycloak_url: "{{ keycloak_auth_url }}"
+    auth_realm: master
+    auth_username: "{{ keycloak_admin }}"
+    auth_password: "{{ keycloak_admin_pass }}"
+    client_id: "{{ app_name }}"
+    realm: "{{ keycloak_realm }}"
+    state: present
+    name: "{{ app_name }}-oidc"
+    description: "{{ app_name }} client"
+    enabled: true
+    client_authenticator_type: client-secret
+    secret: "{{ immich_secret }}"
+    redirect_uris:
+      - "https://{{ app_subdomain }}.{{ domain_name }}/auth/login"
+      - "https://{{ app_subdomain }}.{{ domain_name }}/user-settings"
+      - "https://{{ app_subdomain }}.{{ domain_name }}/api/oauth/mobile-redirect"
+      ## third item is because of a keycloack [closed bug](https://github.com/keycloak/keycloak/issues/32623)
+      # had to setup with https://immich.app/docs/administration/oauth/#mobile-redirect-uri
+    web_origins:
+      - "https://{{ app_subdomain }}.{{ domain_name }}"
+    not_before: 1507825725
+    bearer_only: false
+    consent_required: false
+    standard_flow_enabled: true
+    implicit_flow_enabled: false
+    direct_access_grants_enabled: false
+    service_accounts_enabled: false
+    authorization_services_enabled: false
+    public_client: false
+    frontchannel_logout: false
+    protocol: openid-connect
+  delegate_to: localhost
+
+- name: 04-ADDONS-SSO Create a user for immich realm
+  community.general.keycloak_user:
+    auth_client_id: admin-cli
+    auth_keycloak_url: "{{ keycloak_auth_url }}"
+    auth_realm: master
+    auth_username: "{{ keycloak_admin }}"
+    auth_password: "{{ keycloak_admin_pass }}"
+    id: "{{ keycloak_realm }}"
+    realm: "{{ keycloak_realm }}"
+    username: "{{ main_user_name }}"
+    firstName: E
+    lastName: M
+    email: "{{ main_user_email }}"
+    enabled: true
+    emailVerified: true
+    credentials:
+      - type: password
+        value: "{{ main_user_password }}"
+        temporary: false
+    state: present
+  delegate_to: localhost
+
+
+- name: 99-FINISH -- Recreate app services
+  community.docker.docker_compose_v2:
+    project_src: "{{ project_dir }}"
+    state: "{{ item }}"
+    services:
+      - caddy
+      - immich-db
+      - immich-redis
+      - immich-ml
+      - immich
+  loop:
+    - absent
+    - present
+
+- name: 99-FINISH -- Wait until HTTPS is valid on "https://{{ app_subdomain }}.{{ domain_name }}
+  uri:
+    url: 'https://{{ app_subdomain }}.{{ domain_name }}/'
+    return_content: no
+    validate_certs: yes
+    status_code:
+      - 200
+  until: site_up_output.status == 200
+  retries: 24 # 240 seconds = 4 minutes
+  delay: 10
+  register: site_up_output
+
+
+

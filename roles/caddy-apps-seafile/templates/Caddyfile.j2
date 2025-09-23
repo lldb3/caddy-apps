@@ -1,0 +1,25 @@
+@seafile host {{ app_subdomain }}.{{ domain_name }}
+handle @seafile {
+	reverse_proxy {{ app_endpoint }}
+	encode zstd gzip
+
+	handle /seafdav/* {
+		header {
+			X-Forwarded-Proto https
+		}
+		
+	}
+}
+
+import subdomain-log {{ app_subdomain }}.{{ domain_name }}
+
+{% if onlyoffice_enabled == 'true' %}
+@onlyoffice host office.{{ domain_name }}
+handle @onlyoffice {
+	reverse_proxy http://onlyoffice-documentserver:80
+	encode zstd gzip
+}
+
+import subdomain-log office.{{ domain_name }}{% endif %}
+
+

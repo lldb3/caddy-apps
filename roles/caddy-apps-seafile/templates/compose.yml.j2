@@ -1,0 +1,104 @@
+
+
+{% if onlyoffice_enabled == 'true' %}
+include:
+  - compose.onlyoffice.yml
+{% endif %}
+
+# Keys common to some of the dependent services/apps
+x-common: &common
+  security_opt:
+    - no-new-privileges:true
+  restart: unless-stopped
+
+
+networks:
+  seafile_net:
+    driver: bridge
+
+
+services:
+  seafile:
+    container_name: seafile
+    image: $SEAFILE_REPO
+    <<: *common
+    networks:
+      - main_net
+      - seafile_net
+    volumes:
+      - ./config/nginx:/shared/nginx             # nginx configuration files
+      - ./config/seafile:/shared/seafile/conf
+      # dont change to subpaths on /data/seafile --> will cause recreation / persistence issues
+      - ./data/seafile:/shared
+
+    environment:
+      - TZ=$TZ
+      # create a user with uid 8000 --> groupadd --gid 8000 seafile && useradd --home-dir /home/seafile --no-create-home --uid 8000 --gid 8000 --skel /dev/null seafile
+      - NON_ROOT=true
+      - DB_HOST=seafile-db
+      # DB_ROOT_PASSWD is needed for first run
+      - DB_ROOT_PASSWD=$MARIADB_ROOT_PASSWORD
+      - SEAFILE_ADMIN_EMAIL=$SEAFILE_ADMIN_EMAIL
+      - SEAFILE_ADMIN_PASSWORD=$SEAFILE_ADMIN_PASSWORD
+      - SEAFILE_SERVER_HOSTNAME=$SEAFILE_SERVER_HOSTNAME
+      - SEAFILE_SERVER_LETSENCRYPT=false
+    depends_on:
+      - seafile-db
+      - seafile-memcached
+
+  seafile-db:
+    container_name: seafile-db
+    image: bitnami/mariadb:latest
+    <<: *common
+    networks:
+      - seafile_net
+    ports:
+      - 3306:3306
+    environment:
+      - MARIADB_SKIP_TEST_DB=yes
+      - MARIADB_USER=seafile
+      - MARIADB_PASSWORD=$MARIADB_PASSWORD
+      - MARIADB_ROOT_PASSWORD=$MARIADB_ROOT_PASSWORD
+      - MYSQL_LOG_CONSOLE=true
+      - TIME_ZONE=$TZ
+    volumes:
+      - ./data/mariadb:/bitnami/mariadb
+      - ./config/seafile-init.sql:/docker-entrypoint-startdb.d/seafile-init.sql
+
+  # seafile-redis:
+  #   image: bitnami/redis
+  #   container_name: seafile-redis
+  #   <<: *common
+  #   networks:
+  #     - seafile_net
+  #   environment:
+  #     - REDIS_PASSWORD=${REDIS_PASSWORD}
+  #   volumes:
+  #     - ./data/seafile-redis:/bitnami/redis/data
+
+  seafile-memcached:
+    container_name: seafile-memcached
+    image: memcached:latest
+    <<: *common
+    networks:
+      - seafile_net
+    entrypoint: memcached -m 256
+
+
+  seafile-elasticsearch:
+    image: elasticsearch:8.13.0
+    container_name: seafile-elasticsearch
+    environment:
+      - discovery.type=single-node
+      - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=-Xms2g -Xmx2g"
+      - "xpack.security.enabled=false"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    mem_limit: 4g
+    volumes:
+      - ./data/elasticsearch:/usr/share/elasticsearch/data  # Requested, specifies the path to Elasticsearch data persistent store.
+    networks:
+      - seafile_net

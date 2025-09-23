@@ -1,0 +1,17 @@
+---
+app_endpoint: "seafile:80"
+app_name: "seafile"
+app_subdomain: "drive"
+
+# seafile
+mariadb_root_passwd: Pl34s3_7hink_4b0u7_ch4nging_m3_in_pr0d
+mariadb_seafile_user_passwd: Pl34s3_7hink_4b0u7_ch4nging_m3_in_pr0d
+seafdav_enabled: 'true'
+
+# onlyoffice
+onlyoffice_enabled: 'false'
+postgresql_user: "onlyoffice"
+postgresql_user_password: Pl34s3_7hink_4b0u7_ch4nging_m3_in_pr0d
+
+# rabbitmq
+rabbitmq_password: Pl34s3_7hink_4b0u7_ch4nging_m3_in_pr0d

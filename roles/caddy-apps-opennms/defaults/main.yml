@@ -1,0 +1,8 @@
+---
+
+app_endpoint: "opennms:8980"
+app_name: "opennms"
+app_subdomain: "opennms"
+
+postgresql_user: opennms
+postgresql_user_password: Pl34s3_7hink_4b0u7_ch4nging_m3_in_pr0d

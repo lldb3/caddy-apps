@@ -1,0 +1,8 @@
+---
+
+app_endpoint: "teable:3000"
+app_name: "teable"
+app_subdomain: "teable"
+
+postgresql_user: teable
+postgresql_user_password: Pl34s3_7hink_4b0u7_ch4nging_m3_in_pr0d

@@ -1,0 +1,5 @@
+---
+
+app_endpoint: "speedtracker:80"
+app_name: "speedtracker"
+app_subdomain: "speed"

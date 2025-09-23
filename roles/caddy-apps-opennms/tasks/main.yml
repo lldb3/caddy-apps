@@ -1,0 +1,121 @@
+---
+- name: 01-SETUP -- Create app_name directory
+  ansible.builtin.file:
+    state: directory
+    path: "{{ project_dir }}/apps/{{ app_name }}"
+    owner: "{{ project_dir_owner }}"
+    group: "{{ project_dir_group }}"
+    mode: "0700"
+  become: true
+
+- name: 01-SETUP -- Create app subdirectories
+  ansible.builtin.file:
+    state: directory
+    path: "{{ project_dir }}/apps/{{ app_name }}/{{ item }}"
+    owner: "{{ project_dir_owner }}"
+    group: "{{ project_dir_group }}"
+    mode: "0770"
+  loop:
+    - data
+    - config
+  become: true
+
+- name: 01-SETUP -- Create opennms subdirectories
+  ansible.builtin.file:
+    state: directory
+    path: "{{ project_dir }}/apps/{{ app_name }}/{{ item }}"
+    owner: 10001
+    group: "{{ project_dir_group }}"
+    mode: "0777"
+  loop:
+    - data/opennms
+    - config/opennms
+    - config/opennms-cfg
+    - config/opennms/opennms.properties.d
+  become: true
+
+- name: 01-SETUP -- Create subdirs for bitnami apps
+  ansible.builtin.file:
+    state: directory
+    path: "{{ project_dir}}/apps/{{app_name}}/{{item }}"
+    mode: "0770"
+    owner: "1001"
+    group: "{{ project_dir_group }}"
+  become: true
+  loop:
+    - data/postgresql
+
+- name: 01-SETUP -- create Caddyfile from template
+  ansible.builtin.template:
+    src: Caddyfile.j2
+    dest: "{{ project_dir }}/config/caddy-apps/{{ app_name }}"
+    owner: "{{ project_dir_owner }}"
+    group: "{{ project_dir_group }}"
+    mode: "0600"
+  become: true
+
+- name: 01-SETUP -- copy template files
+  ansible.builtin.template:
+    src: "{{ item }}"
+    dest: "{{ project_dir }}/apps/{{ app_name }}/{{ item }}"
+    owner: "{{ project_dir_owner }}"
+    group: "{{ project_dir_group }}"
+    mode: "0600"
+  loop:
+    - compose.yml
+    - .env
+  become: true
+
+- name: 01-SETUP -- Add / modify {{ APP }}_INCLUDE_PATH in root .env file
+  ansible.builtin.lineinfile:
+    path: "{{ project_dir }}/.env"
+    regexp: "^{{ app_name | upper }}_COMPOSE_PATH=./apps/{{ app_name }}/compose.yml"
+    line: "{{ app_name | upper }}_COMPOSE_PATH=./apps/{{ app_name }}/compose.yml"
+
+
+- name: 01-SETUP -- copy application config files
+  ansible.builtin.template:
+    src: "{{ item }}"
+    dest: "{{ project_dir }}/apps/{{ app_name }}/{{ item }}"
+    owner: "{{ project_dir_owner }}"
+    group: "{{ project_dir_group }}"
+    mode: "0644"
+  loop:
+    - config/opennms/opennms.properties.d/jetty-https.properties
+
+  become: true
+
+
+- name: 02-START -- (Re)start caddy
+  community.docker.docker_compose_v2:
+    project_src: "{{ project_dir }}"
+    pull: missing
+    state: "{{ item }}"
+    services:
+      - caddy
+  loop:
+    - absent
+    - present
+
+- name: 02-START -- Take down and init app services
+  community.docker.docker_compose_v2:
+    project_src: "{{ project_dir }}"
+    pull: missing
+    state: present
+    services:
+      - opennms
+      - opennms-db
+
+
+- name: 99-FINISH Wait until app is available on on "https://{{ app_subdomain }}.{{ domain_name }}
+  uri:
+    url: "https://{{ app_subdomain }}.{{ domain_name }}"
+    return_content: no
+    validate_certs: yes
+    status_code:
+      - 200
+  until: site_up_output.status == 200
+  retries: 24 # 120 seconds = 2 minutes
+  delay: 5
+  register: site_up_output
+

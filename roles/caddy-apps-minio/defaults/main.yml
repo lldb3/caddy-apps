@@ -1,0 +1,9 @@
+---
+
+minio_api: "minio:9000"
+minio_console: "minio:9001"
+app_name: "minio"
+app_subdomain: "s3"
+
+minio_admin_user: "admin"
+minio_admin_pass: "tartenpion"

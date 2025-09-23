@@ -1,0 +1,28 @@
+x-common: &common
+  security_opt:
+    - no-new-privileges:true
+  restart: unless-stopped
+  networks:
+    - main_net
+
+
+volumes:
+  opentts:
+
+services:
+  opentts:
+    <<: *common
+    image: "ghcr.io/rsxdalv/tts-generation-webui:main"
+    container_name: opentts
+    ports:
+      - ${TTS_PORT:-7770}:7770
+      # - ${UI_PORT:-3000}:3000    # UI Frontend on caddy proxy   
+    volumes:
+      - opentts:/app/backend/data
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1 # alternatively, use `count: all` for all GPUs
+              capabilities: [gpu]

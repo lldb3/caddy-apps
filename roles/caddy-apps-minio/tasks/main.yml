@@ -1,0 +1,86 @@
+---
+- name: 01-SETUP -- Create app_name directory
+  ansible.builtin.file:
+    state: directory
+    path: "{{ project_dir }}/apps/{{ app_name }}"
+    owner: "{{ project_dir_owner }}"
+    group: "{{ project_dir_group }}"
+    mode: 0700
+  become: true
+  when: minio_is_local == 'true'
+
+- name: 01-SETUP -- Create app subdirectories
+  ansible.builtin.file:
+    state: directory
+    path: "{{ project_dir }}/apps/{{ app_name }}/{{ item }}"
+    mode: 0770
+  loop:
+    - data
+    - config
+  when: minio_is_local == 'true'
+
+
+- name: 01-SETUP -- create Caddyfile from template (SNI)
+  ansible.builtin.template:
+    src: Caddyfile.j2
+    dest: "{{ project_dir }}/config/caddy-apps-sni/{{ app_name }}"
+    owner: "{{ project_dir_owner }}"
+    group: "{{ project_dir_group }}"
+    mode: 0600
+  become: true
+
+- name: 01-SETUP -- create compose.yml file
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "{{ project_dir }}/apps/{{ app_name }}/{{ item }}"
+    owner: "{{ project_dir_owner }}"
+    group: "{{ project_dir_group }}"
+    mode: 0600
+  loop:
+    - compose.yml
+    - .env
+  become: true
+  when: minio_is_local == 'true'
+
+
+- name: 01-SETUP -- Add / modify {{ APP }}_INCLUDE_PATH in root .env file
+  ansible.builtin.lineinfile:
+    path: "{{ project_dir }}/.env"
+    regexp: '^{{ app_name | upper }}_COMPOSE_PATH=./apps/{{ app_name }}/compose.yml'
+    line: '{{ app_name | upper }}_COMPOSE_PATH=./apps/{{ app_name }}/compose.yml'
+  when: minio_is_local == 'true'
+
+- name: 02-START -- Start minio if local
+  community.docker.docker_compose_v2:
+    project_src: "{{ project_dir }}"
+    state: '{{ item }}'
+    services:
+      - minio
+  loop:
+    - absent
+    - present
+  when: minio_is_local == 'true'
+
+###########################    99-FINISH    ###########################
+- name: 99-FINISH -- Take down and init app services
+  community.docker.docker_compose_v2:
+    project_src: "{{ project_dir }}"
+    pull: missing
+    state: present
+    services:
+      - caddy
+  loop: 
+    - absent
+    - present
+
+- name: 99-FINISH Wait until minio is available on on "{{ s3_public_url }}"
+  uri:
+    url: '{{ s3_public_url }}'
+    return_content: no
+    validate_certs: yes
+    status_code:
+      - 403
+  until: site_up_output.status == 403
+  retries: 24
+  delay: 5
+  register: site_up_output

@@ -1,0 +1,9 @@
+
+@gitea host {{ app_subdomain }}.{{ domain_name }}
+handle @gitea {
+	reverse_proxy {{ app_endpoint }}
+	encode zstd gzip
+
+}
+
+import subdomain-log {{ app_subdomain }}.{{ domain_name }}

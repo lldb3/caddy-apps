@@ -1,0 +1,21 @@
+x-common: &common
+  security_opt:
+    - no-new-privileges:true
+  restart: unless-stopped
+
+services:
+  hass:
+    container_name: hass
+    <<: *common
+    image: lscr.io/linuxserver/homeassistant:latest
+    volumes:
+      - ./config:/config
+      - /etc/localtime:/etc/localtime:ro
+      - /run/dbus:/run/dbus:ro
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    network_mode: host
+    environment:
+      - PUID={{ ansible_uid }}
+      - PGID={{ ansible_gid }}

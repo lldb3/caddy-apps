@@ -1,0 +1,134 @@
+---
+- name: show vars
+  debug:
+    msg: "project_dir: {{ project_dir }}"
+
+- name: Create project directory
+  ansible.builtin.file:
+    state: directory
+    path: "{{ project_dir }}"
+    owner: "{{ project_dir_owner }}"
+    group: "{{ project_dir_group }}"
+    mode: 0700
+  become: true
+
+- name: Create stack subdirectories
+  ansible.builtin.file:
+    state: directory
+    path: "{{ project_dir }}/{{ item }}"
+    owner: "{{ project_dir_owner }}"
+    group: "{{ project_dir_group }}"
+    mode: 0770
+  loop:
+    - data
+    - config
+  become: true
+
+- name: Create stack config subdirectories
+  ansible.builtin.file:
+    state: directory
+    path: "{{ project_dir }}/{{ item }}"
+    mode: 0770
+    owner: "{{ project_dir_owner }}"
+    group: "{{ project_dir_group }}"
+  loop:
+    - config
+    - config/caddy-apps
+    - config/caddy-apps-sni
+    - config/watchtower
+    - apps
+    - data/appdata
+    - data/appdata/caddy_data
+    - data/logs/
+  become: true
+
+- name: Create acme permissions
+  ansible.builtin.file:
+    state: directory
+    path: "{{ project_dir }}/data/appdata/caddy_data/acme"
+    owner: "{{ project_dir_owner }}"
+    group: "{{ project_dir_group }}"
+    mode: 0770
+  become: true
+
+
+- name: 01-SETUP -- Create watchtower config
+  copy:
+    content: |
+      {
+        "auths": {}
+      }
+    dest: "{{ project_dir }}/config/watchtower/config.json"
+    force: true
+    mode: 0640
+
+
+- name: copy local caddy-stack files to remote
+  copy:
+    src: "{{ role_path }}/files/"
+    dest: "{{ project_dir }}/"
+    owner: "{{ project_dir_owner }}"
+    group: "{{ project_dir_group }}"
+    mode: 0600
+
+- name: copy caddy_reload
+  copy:
+    src: "{{ role_path }}/files/caddy_reload.sh"
+    dest: "{{ project_dir }}/"
+    owner: "{{ project_dir_owner }}"
+    group: "{{ project_dir_group }}"
+    mode: 0700
+
+# - name: Check if Caddyfile exists
+#   ansible.builtin.stat:
+#     path: "{{ project_dir }}/config/Caddyfile"
+#   register: caddyfile_stat
+
+- name: create template Caddyfile if it doesn't exist already 
+  ansible.builtin.template:
+    src: Caddyfile.j2
+    dest: "{{ project_dir }}/config/Caddyfile"
+    owner: "{{ project_dir_owner }}"
+    group: "{{ project_dir_group }}"
+    mode: 0600
+  # when: not caddyfile_stat.stat.exists
+
+- name: create compose.yml file
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "{{ project_dir }}/{{ item}}"
+    owner: "{{ project_dir_owner }}"
+    group: "{{ project_dir_group }}"
+    mode: 0600
+  loop:
+    - compose.yml
+    - compose-shared.yml
+    - .env
+
+
+- name: Create and start services - rebuild caddy
+  community.docker.docker_compose_v2:
+    project_src: "{{ project_dir }}"
+    build: always
+    state: present
+    pull: missing
+    services:
+      - caddy
+      - base-nginx
+      - socket-proxy
+      - watchtower
+
+  
+- name: Wait until HTTPS is valid on "https://{{ domain_name }}"
+  uri:
+    url: 'https://{{ domain_name }}'
+    return_content: no
+    validate_certs: yes
+    status_code:
+      - 200
+  until: site_up_output.status == 200
+  retries: 24 # 240 seconds = 4 minutes
+  delay: 10
+  register: site_up_output
+
+

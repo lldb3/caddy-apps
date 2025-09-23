@@ -1,0 +1,26 @@
+
+x-common: &common
+  security_opt:
+    - no-new-privileges:true
+  restart: unless-stopped
+
+
+services:
+  nodered:
+    image: nodered/node-red:latest
+    container_name: nodered
+    <<: *common
+    networks:
+      - main_net
+    environment:
+      - TZ=Europe/Paris
+    ports:
+      - "1880:1880"
+    volumes:
+      - nodered-data:/data
+
+
+volumes:
+  nodered-data:
+
+  

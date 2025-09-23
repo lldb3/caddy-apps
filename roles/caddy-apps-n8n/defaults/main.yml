@@ -1,0 +1,6 @@
+---
+
+app_endpoint: "n8n:5678"
+app_name: "n8n"
+app_subdomain: "n8n"
+

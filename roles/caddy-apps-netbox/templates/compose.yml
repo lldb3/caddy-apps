@@ -1,0 +1,55 @@
+x-common: &common
+  security_opt:
+    - no-new-privileges:true
+  restart: unless-stopped
+
+networks:
+  netbox_net:
+    name: netbox_net
+
+services:
+  netbox:
+    <<: *common
+    image: lscr.io/linuxserver/netbox:latest
+    container_name: netbox
+    volumes:
+      - ./config/netbox:/config
+    environment:
+      - PUID={{ ansible_uid }}
+      - PGID={{ ansible_gid }}
+    networks:
+      - netbox_net
+      - main_net
+    depends_on:
+      - netbox-db
+      - netbox-redis
+
+  netbox-db:
+    <<: *common
+    container_name: netbox-db
+    image: bitnami/postgresql
+    volumes:
+      - ./data/postgresql:/bitnami/postgresql
+    environment:
+      - TZ=${TZ}
+      - POSTGRESQL_DATABASE=${POSTGRES_DB}
+      - POSTGRESQL_USERNAME=${POSTGRES_USER}
+      - POSTGRESQL_PASSWORD=${POSTGRES_PASSWORD}
+    networks:
+      - netbox_net
+    healthcheck:
+      test: [ 'CMD-SHELL', "sh -c 'pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}'" ]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  netbox-redis:
+    image: bitnami/redis
+    container_name: netbox-redis
+    <<: *common
+    networks:
+      - netbox_net
+    environment:
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+    volumes:
+      - ./data/redis:/bitnami/redis/data

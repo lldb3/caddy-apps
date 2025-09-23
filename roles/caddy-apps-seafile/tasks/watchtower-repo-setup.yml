@@ -1,0 +1,37 @@
+- name: 01-SETUP -- Ensure watchtower config exists
+  copy:
+    content: '{"auths": {}}'
+    dest: "{{ project_dir }}/config/watchtower/config.json"
+    force: false
+
+- name: 01-SETUP -- Fetch watchtower config from the remote host
+  slurp:
+    src: "{{ project_dir }}/config/watchtower/config.json"
+  register: watchtower_config
+
+- name: 01-SETUP -- Log into seadrive docker private registry
+  community.docker.docker_login:
+    registry_url: docker.seadrive.org
+    username: seafile
+    password: zjkmid6rQibdZ=uJMuWS
+
+- name: 01-SETUP -- Add JSON object to the file
+  ansible.builtin.set_fact:
+    new_data:
+      auths:
+        docker.seadrive.org:
+          auth: c2VhZmlsZTp6amttaWQ2clFpYmRaPXVKTXVXUw==
+    current_config: "{{ watchtower_config.content | b64decode | from_json }}"
+
+- name: 01-SETUP -- Update watchtower config for seafile
+  ansible.builtin.set_fact:
+    merged_data: "{{ current_config | combine(new_data) }}"
+
+- name: 01-SETUP -- Print watchtower config
+  debug:
+    var: "{{ merged_data | to_nice_json }}"
+
+- name: 01-SETUP -- Write watchtower config
+  copy:
+    dest: "{{ project_dir }}/config/watchtower/config.json"
+    content: "{{ merged_data | to_nice_json }}"

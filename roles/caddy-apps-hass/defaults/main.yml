@@ -1,0 +1,7 @@
+---
+
+app_endpoint: "{{ ansible_eth0.ipv4.address }}:8123"
+# app_endpoint: "hass:8123"
+app_name: "hass"
+app_subdomain: "hass"
+

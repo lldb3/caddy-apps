@@ -1,0 +1,8 @@
+@hass host {{ app_subdomain }}.{{ domain_name }}
+handle @hass {
+	reverse_proxy {{ app_endpoint }}
+	encode zstd gzip
+}
+
+
+import subdomain-log {{ app_subdomain }}.{{ domain_name }}

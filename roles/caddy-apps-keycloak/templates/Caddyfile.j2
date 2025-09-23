@@ -1,0 +1,29 @@
+@auth host {{ app_subdomain }}.{{ domain_name }}
+handle @auth {
+	reverse_proxy {{ app_endpoint }}
+	encode zstd gzip
+	handle /admin* {
+		@blocked not remote_ip {{ admin_whitelisted_ip}}
+		respond @blocked "<h1>Access Denied</h1>" 403
+	}
+
+	handle /realms/master* {
+		@blocked not remote_ip {{ admin_whitelisted_ip}}
+		respond @blocked "<h1>Access Denied</h1>" 403
+	}
+	handle /metrics* {
+		@blocked not remote_ip {{ admin_whitelisted_ip}}
+		respond @blocked "<h1>Access Denied</h1>" 403
+	}
+	handle /health* {
+		@blocked not remote_ip {{ admin_whitelisted_ip}}
+		respond @blocked "<h1>Access Denied</h1>" 403
+	}
+	handle /welcome/* {
+		@blocked not remote_ip {{ admin_whitelisted_ip}}
+		respond @blocked "<h1>Access Denied</h1>" 403
+	}
+
+}
+
+import subdomain-log {{ app_subdomain }}.{{ domain_name }}

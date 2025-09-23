@@ -1,0 +1,87 @@
+x-common: &common
+  security_opt:
+    - no-new-privileges:true
+  restart: unless-stopped
+
+networks:
+  slurpit_net:
+    name: slurpit_net
+
+services:
+  slurpit-portal:
+    <<: *common
+    image: slurpit/portal:latest
+    container_name: slurpit-portal
+    networks:
+      - slurpit_net
+      - main_net
+    environment:
+      TZ: ${TZ}
+      PORTAL_BASE_URL: https://{{ app_subdomain }}.{{ domain_name }}
+      PORTAL_WAREHOUSE_URL: http://slurpit-warehouse
+    volumes:
+      - ./data/logs/nginx:/var/log/nginx/
+      - ./data/logs/mysql:/var/log/mysql/
+      - ./data/logs/php:/var/log/php/
+      # - ./certs:/etc/nginx/certs/
+      - ./data/db/portal:/var/lib/mysql
+      - ./data/backup/portal:/backup/files
+
+
+  slurpit-warehouse:
+    <<: *common
+    image: slurpit/warehouse:latest
+    container_name: slurpit-warehouse
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/services"]
+      interval: 10s
+      timeout: 10s
+      retries: 360
+    networks:
+      - slurpit_net
+    environment:
+      TZ: ${TZ}
+      WAREHOUSE_CALLBACK_SCANNER_URL: http://slurpit-portal/callback/scanner
+      WAREHOUSE_CALLBACK_SCANNER_TOKEN:
+      WAREHOUSE_CALLBACK_SCRAPER_URL: http://slurpit-portal/callback/scraper
+      WAREHOUSE_CALLBACK_SCRAPER_TOKEN:
+    volumes:
+      - ./data/backup/warehouse:/backup/files
+      - ./data/db/warehouse:/var/lib/mongodb
+      - ./data/logs/warehouse/mongodb:/var/log/mongodb
+      - ./data/logs/warehouse:/logs
+
+  slurpit-scraper:
+    <<: *common
+    image: slurpit/scraper:latest
+    container_name: slurpit-scraper
+    depends_on:
+      slurpit-warehouse:
+        condition: service_healthy
+    networks:
+      - slurpit_net
+    environment:
+      TZ: ${TZ}
+      SCRAPER_TIMEOUT: 20
+      SCRAPER_POOLSIZE: 4
+      SCRAPER_WAREHOUSE_URL: http://slurpit-warehouse
+    volumes:
+      - ./data/logs/scraper:/logs
+
+  slurpit-scanner:
+    <<: *common
+    image: slurpit/scanner:latest
+    container_name: slurpit-scanner
+    depends_on:
+      slurpit-warehouse:
+        condition: service_healthy
+    networks:
+      - slurpit_net
+    environment:
+      TZ: ${TZ}
+      SCANNER_POOLSIZE: 4
+      SCANNER_TIMEOUT: 10
+      SCANNER_WAREHOUSE_URL: http://slurpit-warehouse
+    volumes:
+      - ./data/logs/scanner:/logs
+

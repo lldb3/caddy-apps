@@ -1,0 +1,20 @@
+x-common: &common
+  security_opt:
+    - no-new-privileges:true
+  restart: unless-stopped
+
+
+services:
+  youtrack:
+    image: jetbrains/youtrack:2024.1.29548
+    container_name: youtrack
+    <<: *common
+    networks:
+      - main_net
+    environment:
+      - PUBLIC_URI=${PUBLIC_URI}
+    volumes:
+      - ./data/backups:/opt/youtrack/backups
+      - ./data/logs:/opt/youtrack/logs
+      - ./data/data:/opt/youtrack/data
+      - ./data/conf:/opt/youtrack/conf

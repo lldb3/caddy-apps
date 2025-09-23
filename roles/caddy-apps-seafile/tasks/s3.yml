@@ -1,0 +1,93 @@
+---
+-
+
+############################################################ S3 ###############
+
+- name: 04-ADDONS-S3 -- Start minio if local
+  community.docker.docker_compose_v2:
+    project_src: "{{ project_dir }}"
+    state: present
+    services:
+      - minio
+  when: minio_is_local == 'true'
+
+- name: 04-ADDONS-S3 Wait for minio to be available on "{{ s3_backend_url }}/test"
+  uri:
+    url: "{{ s3_backend_url }}"
+    return_content: false
+    validate_certs: true
+    status_code:
+      - 403
+  register: site_up_output
+  until: site_up_output.status == 403
+  retries: 12
+  delay: 5
+  delegate_to: localhost
+
+- name: 04-ADDONS-S3 -- Add Minio buckets for seafile
+  dubzland.minio.minio_bucket:
+    name: "{{ item }}"
+    minio_url: "{{ s3_backend_url }}"
+    minio_access_key: "{{ minio_admin_user }}"
+    minio_secret_key: "{{ minio_admin_pass }}"
+    state: present
+  loop:
+    - seafile-commit-objects
+    - seafile-fs-objects
+    - seafile-block-objects
+  delegate_to: localhost
+
+- name: 04-ADDONS-S3 -- Add Minio Seafile bucket policy
+  dubzland.minio.minio_policy:
+    name: SeafileBucketPolicy
+    data: |
+      {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Action": [
+              "s3:GetBucketLocation",
+              "s3:ListBucket",
+              "s3:ListBucketMultipartUploads"
+            ],
+            "Resource": [
+              "arn:aws:s3:::seafile-commit-objects",
+              "arn:aws:s3:::seafile-fs-objects",
+              "arn:aws:s3:::seafile-block-objects"
+            ]
+          },
+          {
+            "Action": [
+              "s3:AbortMultipartUpload",
+              "s3:DeleteObject",
+              "s3:GetObject",
+              "s3:ListMultipartUploadParts",
+              "s3:PutObject"
+            ],
+            "Effect": "Allow",
+            "Resource": [
+              "arn:aws:s3:::seafile-commit-objects/*",
+              "arn:aws:s3:::seafile-fs-objects/*",
+              "arn:aws:s3:::seafile-block-objects/*"
+            ],
+            "Sid": ""
+          }
+        ]
+      }
+    minio_url: "{{ s3_backend_url }}"
+    minio_access_key: "{{ minio_admin_user }}"
+    minio_secret_key: "{{ minio_admin_pass }}"
+    state: present
+  delegate_to: localhost
+
+- name: 04-ADDONS-S3 -- Add a Minio user for seafile
+  dubzland.minio.minio_user:
+    access_key: seafile-minio
+    secret_key: "Pl34s3_7hink_4b0u7_ch4nging_m3_in_pr0d"
+    minio_url: "{{ s3_backend_url }}"
+    minio_access_key: "{{ minio_admin_user }}"
+    minio_secret_key: "{{ minio_admin_pass }}"
+    state: present
+    policy: SeafileBucketPolicy
+  delegate_to: localhost

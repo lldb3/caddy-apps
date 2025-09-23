@@ -1,0 +1,26 @@
+---
+-
+
+- name: 04-ADDONS-ONLYOFFICE -- Create subdirs for bitnami apps (onlyoffice)
+  ansible.builtin.file:
+    state: directory
+    path: "{{ project_dir}}/apps/{{ app_name }}/{{item }}"
+    mode: '0770'
+    owner: 1001
+    group: "{{ project_dir_group }}"
+  become: true
+  loop:
+    - data/mariadb
+    - data/onlyoffice-postgresql
+    - data/onlyoffice-rabbitmq
+    - config/rabbitmq
+    # - data/seafile-redis
+
+- name: 04-ADDONS-ONLYOFFICE -- Create Rabbitmq config
+  ansible.builtin.template:
+    src: rabbitmq.conf
+    dest: "{{ project_dir}}/apps/{{app_name }}/config/rabbitmq/rabbitmq.conf"
+    mode: '0660'
+    owner: 1001
+    group: "{{ project_dir_group }}"
+  become: true

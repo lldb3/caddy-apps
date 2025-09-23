@@ -1,0 +1,54 @@
+x-common: &common
+  security_opt:
+    - no-new-privileges:true
+  restart: unless-stopped
+  env_file:
+    - .env
+
+networks:
+  keycloak_net:
+    driver: bridge
+
+services:
+  keycloak-db:
+    container_name: keycloak-db
+    <<: *common
+    image: bitnami/postgresql:16
+    volumes:
+      # permissions:  chown -R 1001:1001 ./data/postgres
+      - ./data/postgresql:/bitnami/postgresql
+    environment:
+      POSTGRESQL_DATABASE: ${POSTGRESQL_DATABASE}
+      POSTGRESQL_USERNAME: ${POSTGRESQL_USERNAME}
+      POSTGRESQL_PASSWORD: ${POSTGRESQL_PASSWORD}
+    networks:
+      - main_net
+      - keycloak_net
+
+
+  keycloak:
+    image: bitnami/keycloak:24.0.4
+    <<: *common
+    depends_on:
+      - keycloak-db
+    networks:
+      - main_net
+      - keycloak_net
+    container_name: keycloak
+    environment:
+      # KC_HOSTNAME_STRICT_HTTPS: true
+      # KC_HOSTNAME_STRICT: true
+      KEYCLOAK_HOSTNAME: auth.$DOMAINNAME
+      KEYCLOAK_PRODUCTION: true
+      KEYCLOAK_DATABASE_HOST: keycloak-db
+      KEYCLOAK_DATABASE_NAME: ${POSTGRESQL_DATABASE}
+      KEYCLOAK_DATABASE_USER: ${POSTGRESQL_USERNAME}
+      KEYCLOAK_DATABASE_PASSWORD: ${POSTGRESQL_PASSWORD}
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+      # https://www.keycloak.org/server/reverseproxy
+      KEYCLOAK_PROXY: edge
+    # ports:
+    #   - "28080:8080"
+
+

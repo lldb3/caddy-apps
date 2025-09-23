@@ -1,0 +1,1 @@
+documentation: https://docs.getoutline.com/s/hosting
